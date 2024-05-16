@@ -3,80 +3,64 @@
 Helper script to start and stop a Teams ETW trace.
 
 .DESCRIPTION
-The script generates a WPRP file with the specified trace providers and then starts or stops the trace using the WPR tool.
+This script generates a Windows Performance Recording Profile (WPRP) file in a
+temporary directory suitable for collecting traces with the Teams client, and
+then starts or stops tracing.
 
 .PARAMETER Start
-.\CaptureTeamsTrace.ps1 -Start => Starts the WPR trace.
+Starts tracing.
 
 .PARAMETER Stop
-.\CaptureTeamsTrace.ps1 -Stop "C:\path\to\save" => Stops the WPR trace and saves the ETL file to the specified path.
-Default path is $env:USERPROFILE + "\Downloads".
+Stops and saves the trace to the specified location.
 
-.PARAMETER ExcludeCpuTraces
-If -ExcludeCpuTraces is specified, the CPU traces are not recorded.
+.PARAMETER Cancel
+Stops (without saving) a currently running trace.
 
-.PARAMETER ExcludeDiskTraces
-If -ExcludeDiskTraces is specified, the Disk traces are not recorded.
+.PARAMETER IncludeDisk
+Includes extra data regarding reads and writes of the filesystem will be
+captured (performance heavy).
 
-.PARAMETER ExcludeMemoryTraces
-If -ExcludeMemoryTraces is specified, the Memory traces are not recorded.
-
-.PARAMETER DryRun
--DryRun will not start or stop the trace but will output the WPRP file path and the commands to start and stop the trace.
+.PARAMETER Show
+Outputs the WPRP file path and WPR.exe commands to start and stop the trace.
 
 .EXAMPLE
 .\CaptureTeamsTrace.ps1 -Start
 <do your repro steps>
-.\CaptureTeamsTrace.ps1 -Stop ["C:\path\to\save"] - by default, the ETL file is saved to $env:USERPROFILE + "\Downloads".
-
-.NOTES
-Additional information about the script.
+.\CaptureTeamsTrace.ps1 -Stop <"C:\path\to\save">
 #>
 
 # PowerShell script to start and then stop and save a running trace.
+[CmdletBinding(DefaultParameterSetName = 'Help')]
 param(
+    [Parameter(ParameterSetName="Start")]
     [switch]$Start,
+    [Parameter(ParameterSetName="Start")]
+    [switch]$IncludeDisk = $false,
+    [Parameter(ParameterSetName="Stop")]
     [ValidateScript({
         if (Test-Path $_) { $true }
         else { throw "Directory does not exist: $_" }
     })]
-    [System.IO.DirectoryInfo]$Stop = $env:USERPROFILE + "\Downloads",
-    [switch]$ExcludeCpuTraces = $false,
-    [switch]$ExcludeDiskTraces = $false,
-    [switch]$ExcludeMemoryTraces = $false,
-    [switch]$DryRun = $false
+    [System.IO.DirectoryInfo]$Stop,
+    [Parameter(ParameterSetName="Cancel")]
+    [switch]$Cancel,
+    [Parameter(ParameterSetName="Show")]
+    [switch]$ShowCommands = $false,
+    [Parameter(ParameterSetName="Help")]
+    [switch]$Help = $false
 )
 
-
-$cpuTraces = if (!$ExcludeCpuTraces) {
-    '           <!-- CPU -->
-                <Keyword Value="ProcessThread"/>
-                <Keyword Value="Loader"/>
-                <Keyword Value="Power"/>
-                <Keyword Value="CSwitch"/>
-                <Keyword Value="ReadyThread"/>
-                <Keyword Value="SampledProfile"/>
-                <Keyword Value="DPC"/>
-                <Keyword Value="Interrupt"/>
-                <Keyword Value="IdleStates"/>'
-} else {
-    ''
+if ($PSCmdlet.ParameterSetName -eq "Help") {
+    Get-Help $MyInvocation.MyCommand.Definition
+    return
 }
 
-$diskTraces = if (!$ExcludeDiskTraces) {
-    '          <!-- Disk -->
+$diskTraces = if ($IncludeDisk) {
+    '
+                <!-- Disk -->
                 <Keyword Value="DiskIO"/>
                 <Keyword Value="FileIO"/>
                 <Keyword Value="HardFaults"/>'
-} else {
-    ''
-}
-
-$memoryTraces = if (!$ExcludeMemoryTraces) {
-    '           <!-- Memory -->
-                <Keyword Value="PageFaults"/>
-                <Keyword Value="MemoryHardFaults"/>
-                <Keyword Value="VirtualAlloc"/>'
 } else {
     ''
 }
@@ -87,9 +71,21 @@ $wprpContents = @"
     <Profiles>
         <SystemProvider Id="SystemProvider_Light">
             <Keywords>
-                $cpuTraces
+                <!-- CPU -->
+                <Keyword Value="ProcessThread"/>
+                <Keyword Value="Loader"/>
+                <Keyword Value="Power"/>
+                <Keyword Value="CSwitch"/>
+                <Keyword Value="ReadyThread"/>
+                <Keyword Value="SampledProfile"/>
+                <Keyword Value="DPC"/>
+                <Keyword Value="Interrupt"/>
+                <Keyword Value="IdleStates"/>
+
+                <!-- Memory -->
+                <Keyword Value="MemoryInfo"/>
+                <Keyword Value="MemoryInfoWS"/>
                 $diskTraces
-                $memoryTraces
             </Keywords>
             <Stacks>
                 <Stack Value="CSwitch"/>
@@ -196,6 +192,11 @@ $wprpContents = @"
 </WindowsPerformanceRecorder>
 "@
 
+if ($PSCmdlet.ParameterSetName -eq "Cancel") {
+    Write-Host "Cancelling ETW tracing"
+    wpr.exe -cancel
+}
+
 # Get the current date and time in the specified format
 $currentDateTime = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 
@@ -205,19 +206,19 @@ $tempPath = $env:Temp
 $wprpPath = Join-Path -Path $tempPath -ChildPath ("teams_" + $currentDateTime + ".wprp")
 Set-Content -Path $wprpPath -Value $wprpContents
 
-if($DryRun) {
-    Write-Host "Dry run: Exiting without starting or stopping ETW tracing"
+if($PSCmdlet.ParameterSetName -eq "Show") {
     Write-Host "WPRP file: $wprpPath"
     Write-Host "To collect trace: wpr.exe -start $wprpPath -filemode"
-    Write-Host "To stop trace: wpr.exe -stop ("teams_" + $currentDateTime + ".etl")"
+    Write-Host "To stop trace: wpr.exe -stop teams_" + $currentDateTime + ".etl"
     exit
 }
 
-if ($Start) {
+if ($PSCmdlet.ParameterSetName -eq "Start") {
     Write-Host "Starting ETW tracing"
     wpr.exe -start $wprpPath -filemode
 }
-elseif ($Stop) {
+
+if ($PSCmdlet.ParameterSetName -eq "Stop") {
     $out = $Stop
     # Create the out directory if it doesn't exist
     if (-not (Test-Path -Path $out)) {
