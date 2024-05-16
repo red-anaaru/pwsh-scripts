@@ -1,12 +1,52 @@
+<#
+.SYNOPSIS
+Helper script to start and stop a Teams ETW trace.
+
+.DESCRIPTION
+The script generates a WPRP file with the specified trace providers and then starts or stops the trace using the WPR tool.
+
+.PARAMETER Start
+.\CaptureTeamsTrace.ps1 -Start => Starts the WPR trace.
+
+.PARAMETER Stop
+.\CaptureTeamsTrace.ps1 -Stop "C:\path\to\save" => Stops the WPR trace and saves the ETL file to the specified path.
+Default path is $env:USERPROFILE + "\Downloads".
+
+.PARAMETER ExcludeCpuTraces
+If -ExcludeCpuTraces is specified, the CPU traces are not recorded.
+
+.PARAMETER ExcludeDiskTraces
+If -ExcludeDiskTraces is specified, the Disk traces are not recorded.
+
+.PARAMETER ExcludeMemoryTraces
+If -ExcludeMemoryTraces is specified, the Memory traces are not recorded.
+
+.PARAMETER DryRun
+-DryRun will not start or stop the trace but will output the WPRP file path and the commands to start and stop the trace.
+
+.EXAMPLE
+.\CaptureTeamsTrace.ps1 -Start
+<do your repro steps>
+.\CaptureTeamsTrace.ps1 -Stop ["C:\path\to\save"] - by default, the ETL file is saved to $env:USERPROFILE + "\Downloads".
+
+.NOTES
+Additional information about the script.
+#>
+
 # PowerShell script to start and then stop and save a running trace.
 param(
     [switch]$Start,
-    [string]$Stop,
+    [ValidateScript({
+        if (Test-Path $_) { $true }
+        else { throw "Directory does not exist: $_" }
+    })]
+    [System.IO.DirectoryInfo]$Stop = $env:USERPROFILE + "\Downloads",
     [switch]$ExcludeCpuTraces = $false,
     [switch]$ExcludeDiskTraces = $false,
     [switch]$ExcludeMemoryTraces = $false,
     [switch]$DryRun = $false
 )
+
 
 $cpuTraces = if (!$ExcludeCpuTraces) {
     '           <!-- CPU -->
