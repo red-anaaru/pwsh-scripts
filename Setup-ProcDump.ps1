@@ -22,5 +22,4 @@ If (Test-Path -Path $dumpCollectionPath -PathType Container) {
   New-Item -ItemType Directory -Path $dumpCollectionPath -Force
 }
 
-# Test if HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug /v Debugger is set to procdump
-procdump -ma -i c:\dumps -accepteula
+Start-Process powershell -Verb runAs -ArgumentList '-Command & {procdump -ma -i $dumpCollectionPath -accepteula}'
