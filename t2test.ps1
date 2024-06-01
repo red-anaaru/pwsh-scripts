@@ -4,7 +4,7 @@ Param(
   [string] $arch = "x64",
   [Parameter()]
   [ValidateSet("release","debug")]
-  [string] $config = "debug"
+  [string] $config = "debug",
   [Switch] $dryRun = $false
 )
 
