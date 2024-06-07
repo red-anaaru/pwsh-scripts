@@ -15,3 +15,5 @@ Get-Process $ProcessName | ForEach-Object {
         }
     }
 } | Export-Csv -Path "$OutputPath\$ProcessName_modules_info.csv" -NoTypeInformation
+
+Write-Host "Modules information exported to $OutputPath\$ProcessName_modules_info.csv"
