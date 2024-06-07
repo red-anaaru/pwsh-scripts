@@ -3,6 +3,9 @@ param(
     [string]$OutputPath = "$env:USERPROFILE\Downloads"
 )
 
+$CsvFilePath = Join-Path -Path $OutputPath -ChildPath ("{0}_modules_info.csv" -f $ProcessName)
+Write-Debug "CsvFilePath: $CsvFilePath"
+
 Get-Process $ProcessName | ForEach-Object {
     $process = $_
     $process.Modules | ForEach-Object {
@@ -14,6 +17,6 @@ Get-Process $ProcessName | ForEach-Object {
             Description = $_.FileVersionInfo.FileDescription
         }
     }
-} | Export-Csv -Path "$OutputPath\$ProcessName_modules_info.csv" -NoTypeInformation
+} | Export-Csv -Path $CsvFilePath -NoTypeInformation
 
-Write-Host "Modules information exported to $OutputPath\$ProcessName_modules_info.csv"
+Write-Host "Modules information exported to $CsvFilePath"
