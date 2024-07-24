@@ -59,7 +59,7 @@ $wprpContents = @"
 <?xml version="1.0" encoding="utf-8"?>
 <WindowsPerformanceRecorder Version="1.0" Author="Microsoft Corporation" Copyright="Microsoft Corporation" Company="Microsoft Corporation">
   <Profiles>
-    <SystemCollector Id="KernelCollector" Name="NT Kernel Logger">
+    <SystemCollector Id="SystemCollector" Name="NT Kernel Logger" HostGuestCorrelation="true">
       <BufferSize Value="1024"/>
       <Buffers Value="64"/>
     </SystemCollector>
@@ -69,7 +69,7 @@ $wprpContents = @"
       <Buffers Value="32" />
     </EventCollector>
 
-    <SystemProvider Id="SystemProviderBase">
+    <SystemProvider Id="SystemProviderVerbose">
       <Keywords>
         <Keyword Value="Loader" />
         <Keyword Value="ProcessThread" />
