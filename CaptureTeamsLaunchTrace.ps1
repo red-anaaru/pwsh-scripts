@@ -60,8 +60,8 @@ $wprpContents = @"
 <WindowsPerformanceRecorder Version="1.0" Author="Microsoft Corporation" Copyright="Microsoft Corporation" Company="Microsoft Corporation">
   <Profiles>
     <SystemCollector Id="SystemCollector" Name="NT Kernel Logger" HostGuestCorrelation="true">
-        <BufferSize Value="1024"/>
-        <Buffers Value="32"/>
+      <BufferSize Value="1024"/>
+      <Buffers Value="64"/>
     </SystemCollector>
 
     <EventCollector Id="EventCollector_WDGDEPAdex" Name="WDGDEPAdexCollector" HostGuestCorrelation="true">
@@ -71,9 +71,26 @@ $wprpContents = @"
 
     <SystemProvider Id="SystemProviderVerbose">
       <Keywords>
-        <Keyword Value="ProcessThread"/>
-        <Keyword Value="Loader"/>
+        <Keyword Value="Loader" />
+        <Keyword Value="ProcessThread" />
+        <CustomKeyword Value="0x00080000" />
       </Keywords>
+      <Stacks>
+        <CustomStack Value="0x0720" />
+        <CustomStack Value="0x0721" />
+        <CustomStack Value="0x0722" />
+        <CustomStack Value="0x0723" />
+        <CustomStack Value="0x0724" />
+        <CustomStack Value="0x0725" />
+        <CustomStack Value="0x0726" />
+        <CustomStack Value="0x0727" />
+        <CustomStack Value="0x0728" />
+        <CustomStack Value="0x0729" />
+        <CustomStack Value="0x072A" />
+        <CustomStack Value="0x072B" />
+        <CustomStack Value="0x072C" />
+        <CustomStack Value="0x072D" />
+      </Stacks>
     </SystemProvider>
 
     <!-- <EventProvider Id="Microsoft.Windows.AppXDeploymentServer" Name="fe762fb1-341a-4dd4-b399-be1868b3d918" Stack="true"> -->
