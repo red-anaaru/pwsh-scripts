@@ -85,6 +85,12 @@ Invoke-WebRequest -Uri $buildUrl -OutFile $pkgFile
 Write-Output "Downloaded $pkgFile"
 
 if ($Install) {
+  Write-Information "Checking existing Teams installation..."
+  $teamsApp = Get-AppxPackage -Name "MSTeams"
+  if ($teamsApp) {
+    Write-Information "Uninstalling $teamsApp.PackageFullName ..."
+    Remove-AppxPackage -Package $teamsApp.PackageFullName
+  }
   Write-Information "Installing $pkgFile..."
   if ($platform -eq "windows") {
     Add-AppxPackage -Path $pkgFile
