@@ -16,6 +16,15 @@ Stops and saves the trace to the specified location.
 .PARAMETER Cancel
 Stops (without saving) a currently running trace.
 
+.PARAMETER StartBoot
+Starts boot tracing.
+
+.PARAMETER StopBoot
+Stops and saves the boot trace to the specified location.
+
+.PARAMETER CancelBoot
+Stops (without saving) a currently running boot trace.
+
 .PARAMETER IncludeDisk
 Includes extra data regarding reads and writes of the filesystem will be
 captured (performance heavy).
@@ -36,14 +45,24 @@ Outputs the WPRP file path and WPR.exe commands to start and stop the trace.
 param(
     [Parameter(ParameterSetName="Start")]
     [switch]$Start,
+    [Parameter(ParameterSetName="StartBoot")]
+    [switch]$StartBoot,
     [Parameter(ParameterSetName="Stop")]
     [ValidateScript({
         if (Test-Path $_) { $true }
         else { throw "Directory does not exist: $_" }
     })]
     [System.IO.DirectoryInfo]$Stop,
+    [Parameter(ParameterSetName="StopBoot")]
+    [ValidateScript({
+        if (Test-Path $_) { $true }
+        else { throw "Directory does not exist: $_" }
+    })]
+    [System.IO.DirectoryInfo]$StopBoot,
     [Parameter(ParameterSetName="Cancel")]
     [switch]$Cancel,
+    [Parameter(ParameterSetName="CancelBoot")]
+    [switch]$CancelBoot,
     [Parameter(ParameterSetName="Show")]
     [switch]$ShowCommands = $false,
     [Parameter(ParameterSetName="Help")]
@@ -299,6 +318,11 @@ if ($PSCmdlet.ParameterSetName -eq "Cancel") {
     wpr.exe -cancel
 }
 
+if ($PSCmdlet.ParameterSetName -eq "CancelBoot") {
+    Write-Host "Cancelling ETW boot tracing"
+    wpr.exe -cancelboot
+}
+
 # Get the current date and time in the specified format
 $currentDateTime = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 
@@ -312,12 +336,21 @@ if($PSCmdlet.ParameterSetName -eq "Show") {
     Write-Host "WPRP file: $wprpPath"
     Write-Host "To collect trace: wpr.exe -start $wprpPath -filemode"
     Write-Host "To stop trace: wpr.exe -stop teamslaunch_" + $currentDateTime + ".etl"
+    Write-Host "To cancel trace: wpr.exe -cancel"
+    Write-Host "To start boot trace: wpr.exe -addboot $wprpPath -filemode"
+    Write-Host "To stop boot trace: wpr.exe -stopboot systemboot_teamslaunch_" + $currentDateTime + ".etl"
+    Write-Host "To cancel boot trace: wpr.exe -cancelboot"
     exit
 }
 
 if ($PSCmdlet.ParameterSetName -eq "Start") {
     Write-Host "Starting ETW tracing"
     wpr.exe -start $wprpPath -filemode
+}
+
+if ($PSCmdlet.ParameterSetName -eq "StartBoot") {
+    Write-Host "Starting ETW boot tracing"
+    wpr.exe -addboot $wprpPath -filemode
 }
 
 if ($PSCmdlet.ParameterSetName -eq "Stop") {
@@ -332,6 +365,23 @@ if ($PSCmdlet.ParameterSetName -eq "Stop") {
     $etlPath = Join-Path -Path $out -ChildPath ("teamslaunch_" + $currentDateTime + ".etl")
     Write-Host "Stopping ETW tracing"
     wpr.exe -stop $etlPath
+
+    # Remove the WPRP file
+    Remove-Item -Path $wprpPath
+}
+
+if ($PSCmdlet.ParameterSetName -eq "StopBoot") {
+    $out = $StopBoot
+    # Create the out directory if it doesn't exist
+    if (-not (Test-Path -Path $out)) {
+        New-Item -Path $out -ItemType Directory
+        Write-Host "Created: $out"
+    }
+
+    # Capturing the ETW trace
+    $etlPath = Join-Path -Path $out -ChildPath ("systemboot_teamslaunch_" + $currentDateTime + ".etl")
+    Write-Host "Stopping ETW boot tracing"
+    wpr.exe -stopboot $etlPath
 
     # Remove the WPRP file
     Remove-Item -Path $wprpPath
