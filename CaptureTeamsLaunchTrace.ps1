@@ -112,6 +112,14 @@ $wprpContents = @"
       </Stacks>
     </SystemProvider>
 
+    <!-- DAM.sys trace -->
+    <EventProvider Id="Microsoft.Windows.DesktopActivityModerator" Name="60ae66d1-1c8c-5461-5284-fe74dd01096e" />
+    <EventProvider Id="EventProvider_Microsoft-Windows-DesktopActivityModerator" Name="Microsoft-Windows-DesktopActivityModerator">
+      <Keywords>
+        <Keyword Value="0xFFFFFFDF" />
+      </Keywords>
+    </EventProvider>
+
     <!-- <EventProvider Id="Microsoft.Windows.AppXDeploymentServer" Name="fe762fb1-341a-4dd4-b399-be1868b3d918" Stack="true"> -->
     <EventProvider Id="Microsoft.Windows.AppXDeploymentServer" Name="fe762fb1-341a-4dd4-b399-be1868b3d918">
       <StackEventNameFilters FilterIn="true">
@@ -142,6 +150,10 @@ $wprpContents = @"
           <EventProviders>
             <!-- WPRP puts EventProviderId elements before EventProvider elements -->
             <EventProviderId Value="Microsoft.Windows.AppXDeploymentServer"/>
+
+            <!-- DAM.sys EventProviderId -->
+            <EventProviderId Value="Microsoft.Windows.DesktopActivityModerator" />
+            <EventProviderId Value="EventProvider_Microsoft-Windows-DesktopActivityModerator" />
 
             <!-- Filter Driver -->
             <EventProviderId Value="EventProvider_BindFltTraceLoggingProvider" />
