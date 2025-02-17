@@ -2,6 +2,7 @@ param(
     [string]$teamsReposDir = "C:\teams-repos",
     [string]$repoDir = "tcns",
     [string]$InstallStep = "Step1"
+    [Switch]$InstallDebugTools
 )
 
 # Check if the current shell is running as administrator
@@ -16,22 +17,33 @@ else {
 
 if ($InstallStep -eq "Step1") {
   Write-Output "Installing Visual Studio 2022 Enterprise..."
-  winget install --id Microsoft.VisualStudio.2022.Enterprise --source winget
+  winget install --id Microsoft.VisualStudio.2022.Enterprise --source winget --silent --accept-package-agreements --accept-source-agreements
 
   Write-Output "Installing Git..."
-  winget install --id Microsoft.Git --source winget
+  winget install --id Microsoft.Git --source winget --silent --accept-package-agreements --accept-source-agreements
 
   Write-Output "Installing NVM for Windows..."
-  winget install --id CoreyButler.NVMforWindows --source winget
+  winget install --id CoreyButler.NVMforWindows --source winget --silent --accept-package-agreements --accept-source-agreements
 
   Write-Output "Installing Azure CLI..."
-  winget install --id Microsoft.AzureCLI --source winget
+  winget install --id Microsoft.AzureCLI --source winget --silent --accept-package-agreements --accept-source-agreements
 
   Write-Output "Installing LLVM..."
-  winget install --id LLVM.LLVM --Version 18.1.8
+  winget install --id LLVM.LLVM --Version 18.1.8 --silent --accept-package-agreements --accept-source-agreements
 
   Write-Output "Installing CMake..."
-  winget install --id Kitware.CMake --source winget
+  winget install --id Kitware.CMake --source winget --silent --accept-package-agreements --accept-source-agreements
+
+  Write-Output "Installing Nuget..."
+  winget install --id NuGet.NuGet --source winget --silent --accept-package-agreements --accept-source-agreements
+
+  if ($InstallDebugTools) {
+    Write-Output "Installing Windbg..."
+    winget install --id Microsoft.WinDbg --source winget --silent --accept-package-agreements --accept-source-agreements
+
+    Write-Output "Installing Sysinternals suite..."
+    winget install --id Microsoft.Sysinternals --source winget --silent --accept-package-agreements --accept-source-agreements
+  }
 
   Write-Output "Restarting PowerShell in Admin mode and continue setup ..."
   Start-Process powershell.exe "-File `"$PSCommandPath`" -ArgumentList `"-InstallStep Step2`"" -Verb RunAs
