@@ -67,12 +67,17 @@ param (
   [string]$buildArch = "x64",
   [string]$repoPath = (Get-Location).Path,
   [switch]$skipDepsInstall = $false,
-  [switch]$UseCmake = $false
+  [switch]$UseCmake = $false,
+  [switch]$RotatePat = $false
 )
 
 # Change to the repository directory
 $fullRepoPath = Resolve-Path -Path $repoPath
 Set-Location $fullRepoPath
+
+if ($RotatePat) {
+  .\scripts\Rotate-Pat.ps1
+}
 
 if ($UseCmake) {
   if ($buildConfig -eq "TfwDebug" -or $buildConfig -eq "Debug") {
