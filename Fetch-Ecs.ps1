@@ -6,7 +6,8 @@ Param (
   $appVer,
   $tenantId,
   $userId,
-  $cpuArch
+  $cpuArch,
+  $outDir
 )
 
 $prodEcsBaseUrl = "https://config.teams.microsoft.com/config/v1/";
@@ -44,7 +45,7 @@ switch ($cloud) {
   }
 }
 
-switch ($plat) {
+switch ($appPlat) {
   'tfl' { $platId = $tflPlatId }
   'mac' { $platId = $macPlatId }
   'mtr' { $platId = $mtrPlatId }
@@ -63,6 +64,10 @@ If ($tenantId) {
 
 If ($userId) {
   $ecsFetchUrl += "&aaduserid={$userId}"
+}
+
+If ($outDir -eq $null) {
+  $outDir = $env:USERPROFILE/Downloads
 }
 
 Invoke-WebRequest -Uri $ecsFetchUrl -UseBasicParsing -OutFile $outDir\$cloud-ecs.json
