@@ -1,8 +1,77 @@
+<#
+.SYNOPSIS
+    Automated setup script for Teams Client Native Shell (TCNS) development environment.
+
+.DESCRIPTION
+    This script automates the installation and configuration of all necessary tools and dependencies
+    for Teams Client Native Shell development. It runs in two steps:
+    
+    Step 1:
+    - Installs Visual Studio 2022 Enterprise
+    - Installs Git
+    - Installs NVM for Windows
+    - Installs Azure CLI
+    - Installs LLVM
+    - Installs CMake
+    - Installs NuGet
+    - Installs WinDbg and Sysinternals (optional)
+
+    Step 2:
+    - Configures Azure DevOps CLI
+    - Installs Node.js and sets up specific version
+    - Installs Yarn
+    - Clones the TCNS repository
+    - Configures Visual Studio with required components
+
+.PARAMETER teamsReposDir
+    The directory where the Teams repositories will be cloned. Default is "C:\teams-repos"
+
+.PARAMETER repoDir
+    The directory name for the TCNS repository. Default is "tcns"
+
+.PARAMETER InstallStep
+    Specifies which installation step to run. Valid values are "Step1" or "Step2". Default is "Step1"
+
+.PARAMETER SkipVSInstall
+    Skip Visual Studio 2022 Enterprise installation
+
+.PARAMETER SkipGitInstall
+    Skip Git installation
+
+.PARAMETER SkipDebugToolsInstall
+    Skip installation of debugging tools (WinDbg and Sysinternals)
+
+.EXAMPLE
+    # Run the complete installation with default settings
+    .\Setup-Tcns.ps1
+
+.EXAMPLE
+    # Run installation with custom repository directory
+    # Repository will be cloned to "D:\repos\my-tcns"
+    .\Setup-Tcns.ps1 -teamsReposDir "D:\repos" -repoDir "my-tcns"
+
+.EXAMPLE
+    # Skip Visual Studio and Git installation
+    .\Setup-Tcns.ps1 -SkipVSInstall -SkipGitInstall
+
+.EXAMPLE
+    # Run only Step2 of the installation
+    .\Setup-Tcns.ps1 -InstallStep Step2
+
+.NOTES
+    - Requires Windows 10/11
+    - Must be run with administrator privileges
+    - Internet connection required
+    - Visual Studio 2022 installation requires significant disk space
+#>
+
 param(
     [string]$teamsReposDir = "C:\teams-repos",
     [string]$repoDir = "tcns",
-    [string]$InstallStep = "Step1"
-    [Switch]$InstallDebugTools
+    [string]$InstallStep = "Step1",
+    [Switch]$SkipVSInstall,
+    [Switch]$SkipGitInstall,
+    [Switch]$SkipDebugToolsInstall
 )
 
 # Check if the current shell is running as administrator
@@ -16,11 +85,15 @@ else {
 }
 
 if ($InstallStep -eq "Step1") {
-  Write-Output "Installing Visual Studio 2022 Enterprise..."
-  winget install --id Microsoft.VisualStudio.2022.Enterprise --source winget --silent --accept-package-agreements --accept-source-agreements
+  if (-not $SkipVSInstall) {
+    Write-Output "Installing Visual Studio 2022 Enterprise..."
+    winget install --id Microsoft.VisualStudio.2022.Enterprise --source winget --silent --accept-package-agreements --accept-source-agreements
+  }
 
-  Write-Output "Installing Git..."
-  winget install --id Microsoft.Git --source winget --silent --accept-package-agreements --accept-source-agreements
+  if (-not $SkipGitInstall) {
+    Write-Output "Installing Git..."
+    winget install --id Microsoft.Git --source winget --silent --accept-package-agreements --accept-source-agreements
+  }
 
   Write-Output "Installing NVM for Windows..."
   winget install --id CoreyButler.NVMforWindows --source winget --silent --accept-package-agreements --accept-source-agreements
@@ -37,7 +110,7 @@ if ($InstallStep -eq "Step1") {
   Write-Output "Installing Nuget..."
   winget install --id NuGet.NuGet --source winget --silent --accept-package-agreements --accept-source-agreements
 
-  if ($InstallDebugTools) {
+  if (-not $SkipDebugToolsInstall) {
     Write-Output "Installing Windbg..."
     winget install --id Microsoft.WinDbg --source winget --silent --accept-package-agreements --accept-source-agreements
 
@@ -80,12 +153,18 @@ elseif ($InstallStep -eq "Step2") {
   git checkout user/anaaru/vsconfig
 
   Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer"
-  .\vs_enterprise.exe --lang en-US --config $repoDir\vsconfig.json --passive --norestart
+  .\vs_installer.exe install --in $repoDir\vsconfig.json --quiet --wait --norestart --nocache --includeRecommended --includeOptional --accept-license
 
   Set-Location "$teamsReposDir\$repoDir"
 
   Write-Output "Setup complete. Please restart your computer to finalize the installation."
   Write-Output "After restart, run the following command to build the project:"
-  Write-Output ""
+  Write-Output "Press any key to restart your computer now, or press 'q' to quit and restart later."
+  $key = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+  if ($key.Character -ne 'q') {
+    Restart-Computer
+  } else {
+    Write-Output "You chose to restart later. Please remember to restart your computer to finalize the installation."
+  }
   exit
 }
