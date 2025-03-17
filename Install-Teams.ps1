@@ -65,8 +65,7 @@ if ($SkipCertInstall) {
 }
 
 # Uninstall existing MSTeams package
-$packageName = "MSTeams_8wekyb3d8bbwe"
-$package = Get-AppxPackage -Name $packageName -ErrorAction SilentlyContinue
+$package = Get-AppxPackage -Name MSTeams -ErrorAction SilentlyContinue
 if ($package) {
   Write-Host "Uninstalling existing MSTeams package..."
   Remove-AppxPackage -Package $package.PackageFullName
