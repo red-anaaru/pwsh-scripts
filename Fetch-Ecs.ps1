@@ -56,7 +56,7 @@ switch ($appPlat) {
 
 $settingAgents = 'TeamsBuilds,TeamsWebview2'
 
-$ecsFetchUrl = 'https://{$ecsUrl}/config/v1/MicrosoftTeams/{$platId}_{appVer}?&agents={$settingAgents}&audience={$ring}&cloud={$cloud}&cpuarch={cpuArch}&desktopVersion={appVer}&environment={cloud}&osplatform={osplat}&osversion={osVer}&teamsring={ring}'
+$ecsFetchUrl = 'https://{0}/config/v1/MicrosoftTeams/{1}_{2}?&agents={3}&audience={4}&cloud={5}&cpuarch={6}&desktopVersion={2}&environment={5}&osplatform={7}&osversion={8}&teamsring={4}' -f $ecsUrl, $platId, $appVer, $settingAgents, $ring, $cloud, $cpuArch, $osplat, $osVer
 
 If ($tenantId) {
   $ecsFetchUrl += "&tenantId={$tenantId}"
@@ -67,7 +67,9 @@ If ($userId) {
 }
 
 If ($outDir -eq $null) {
-  $outDir = $env:USERPROFILE/Downloads
+  $outDir = Join-Path -Path $env:USERPROFILE -ChildPath Downloads
 }
 
-Invoke-WebRequest -Uri $ecsFetchUrl -UseBasicParsing -OutFile $outDir\$cloud-ecs.json
+$ecsJsonPath = Join-Path -Path $outDir -ChildPath "$cloud"-ecs.json
+
+Invoke-WebRequest -Uri $ecsFetchUrl -UseBasicParsing -OutFile $ecsJsonPath
