@@ -65,11 +65,16 @@ if ($build -eq $nul) {
   Exit
 }
 
-$statics = If ($ring -ne "r4") {"staticsint"} Else {"statics"}
 $appName = If ($platform -eq "windows") {"MSTeams"} Else {"MicrosoftTeams"}
 $extn = If ($platform -eq "windows") {"msix"} Else {"pkg"}
 $appPkgName = "{0}-{1}.{2}" -f $appName, $arch, $extn
-$buildUrl = "https://{0}.teams.cdn.office.net/production-{1}-{2}/{3}/{4}" -f $statics, $platform, $arch, $build, $appPkgName
+$statics = If ($ring -ne "r4") {"staticsint"} Else {"statics"}
+
+if ($build -eq "lkg") {
+  $buildUrl = "https://aka.ms/t2x-{0}" -f $arch
+} else {
+  $buildUrl = "https://{0}.teams.cdn.office.net/production-{1}-{2}/{3}/{4}" -f $statics, $platform, $arch, $build, $appPkgName
+}
 # $homeEnvVar = If ($IsWindows) {"USERPROFILE"} Else {"Home"}
 
 if ($dryRun) {
