@@ -7,11 +7,43 @@ param(
     [switch]$Force = $false,
     [switch]$EnableTracing = $false,
     [switch]$SkipBeforeCheckpoint = $false,
+    [Parameter(ParameterSetName="StartBoot")]
+    [switch]$StartBoot,
+    [Parameter(ParameterSetName="StopBoot")]
+    [switch]$StopBoot,
+    [Parameter(ParameterSetName="CancelBoot")]
+    [switch]$CancelBoot,
     [Parameter(Mandatory=$false)]
     [System.String]$ProcmonPath = "",
     [Parameter(Mandatory=$false)]
     [System.String]$TargetPackageFamilyName = ""
-    )
+)
+
+$LogsFolderName = 'AppxLogs' + (get-date -uformat %s)
+$LogsDestinationPath = $env:TEMP + '\' + $LogsFolderName
+$CabPath = $LogsDestinationPath + '.zip'
+
+# Check if LogsDestinationPath exists, create if not
+if (-not (Test-Path -Path $LogsDestinationPath)) {
+    New-Item -ItemType Directory -Force -Path $LogsDestinationPath > $null
+}
+
+# Validation: StartBoot requires EnableTracing
+if ($PSBoundParameters.ContainsKey('StartBoot') -and $StartBoot) {
+    if (-not ($PSBoundParameters.ContainsKey('EnableTracing') -and $EnableTracing)) {
+        Write-Error "The -StartBoot switch can only be used together with -EnableTracing."
+        exit 1
+    }
+}
+
+if ($PSBoundParameters.ContainsKey('StopBoot') -and $StopBoot) {
+    Stop-WprBootTracing($LogsDestinationPath)
+}
+
+if ($PSCmdlet.ParameterSetName -eq "CancelBoot") {
+    Write-Host "Cancelling ETW boot tracing"
+    wpr.exe -cancelboot
+}
 
 # Function to get the current timestamp
 function Get-Timestamp {
@@ -774,7 +806,49 @@ function Checkpoint-UTMData {
     }
 }
 
-function Trace-WprEvents($LogsDestinationPath) {
+function Stop-WprBootTracing($LogsDestinationPath) {
+    $appModelMinTraceStopped = $false
+    $adexProvidersTraceStopped = $false
+    $startBvtTraceStopped = $false
+    try {
+        Write-Host "[$(Get-Timestamp)] Ending WPR instance name: AppModelMin"
+        wpr -stopboot ($LogsDestinationPath + '\AppModelLogs.etl') -instancename "AppModelMin"
+        $appModelMinTraceStopped = $true
+    } catch {
+        if(!$appModelMinTraceStopped) {
+            Write-Error "[$(Get-Timestamp)] Failed to end WPR instance name: AppModelMin."
+        }
+    }
+    
+    try {
+        Write-Host "[$(Get-Timestamp)] Ending WPR instance name: AdexProviders"
+        wpr -stopboot ($LogsDestinationPath + '\AdexProvidersLogs.etl') -instancename "AdexProviders"
+        $adexProvidersTraceStopped = $true
+    } catch {
+        if(!$adexProvidersTraceStopped) {
+            Write-Error "[$(Get-Timestamp)] Failed to end WPR instance name: AdexProviders."
+        }
+    }
+    
+    try {
+        Write-Host "[$(Get-Timestamp)] Ending WPR instance name: StartBvt"
+        wpr -stopboot ($LogsDestinationPath + '\StartBvtLogs.etl') -instancename "StartBvt"
+        $startBvtTraceStopped = $true
+    } catch {
+        if(!$startBvtTraceStopped) {
+            Write-Error "[$(Get-Timestamp)] Failed to end WPR instance name: StartBvt."
+        }
+    }
+    
+    $tracingStopped = $appModelMinTraceStopped -and $adexProvidersTraceStopped -and $startBvtTraceStopped
+    if($tracingStopped) {
+        Write-Host "[$(Get-Timestamp)] Boot tracing stopped. Please zip and share the ETL files from $LogsDestinationPath"
+    } else {
+        Write-Error "[$(Get-Timestamp)] Boot tracing failed to stop."
+    }
+}
+
+function Trace-WprEvents($LogsDestinationPath, [bool] $StartBoot = $false) {
     #Start tracelogging
     $appModelMinTraceStarted = $false
     $adexProvidersTraceStarted = $false
@@ -786,7 +860,11 @@ function Trace-WprEvents($LogsDestinationPath) {
         Get-AppModelMinWprp | Out-File -FilePath $appModelMinFile -Encoding UTF8
 
         Write-Host "[$(Get-Timestamp)] Starting WPR instance name: AppModelMin"
-        wpr -start $appModelMinFile -instancename "AppModelMin"
+        if ($StartBoot -eq $true) {
+            wpr -addboot $appModelMinFile -instancename "AppModelMin"
+        } else {
+            wpr -start $appModelMinFile -instancename "AppModelMin"
+        }
         $appModelMinTraceStarted = $true
     } catch {
         if(!$appModelMinTraceStarted) {
@@ -799,7 +877,11 @@ function Trace-WprEvents($LogsDestinationPath) {
         Get-AdexProvidersWprp | Out-File -FilePath $adexProvidersFile -Encoding UTF8
 
         Write-Host "[$(Get-Timestamp)] Starting WPR instance name: AdexProviders"
-        wpr -start $adexProvidersFile -filemode -instancename "AdexProviders"
+        if ($StartBoot -eq $true) {
+            wpr -addboot $adexProvidersFile -filemode -instancename "AdexProviders"
+        } else {
+            wpr -start $adexProvidersFile -filemode -instancename "AdexProviders"
+        }
         $adexProvidersTraceStarted = $true
     } catch {
         if(!$adexProvidersTraceStarted) {
@@ -812,7 +894,11 @@ function Trace-WprEvents($LogsDestinationPath) {
         Get-StartBvtWprp | Out-File -FilePath $startBvtFile -Encoding UTF8
 
         Write-Host "[$(Get-Timestamp)] Starting WPR instance name: StartBvt"
-        wpr -start $startBvtFile -filemode -instancename "StartBvt"
+        if ($StartBoot -eq $true) {
+            wpr -addboot $startBvtFile -filemode -instancename "StartBvt"
+        } else {
+            wpr -start $startBvtFile -filemode -instancename "StartBvt"
+        }
         $startBvtTraceStarted = $true
     } catch {
         if(!$startBvtTraceStarted) {
@@ -837,8 +923,13 @@ function Trace-WprEvents($LogsDestinationPath) {
 
     $tracingStarted = $appModelMinTraceStarted -or $adexProvidersTraceStarted -or $startBvtTraceStarted -or $procmonStarted
     if($tracingStarted) {
-        Write-Host "[$(Get-Timestamp)] Live Tracing Started. Go ahead and reproduce your problem. Press [Enter] when done."
-        [void][System.Console]::ReadLine()
+        if ($StartBoot -eq $true) {
+            Write-Host "[$(Get-Timestamp)] Boot tracing enabled. Restart the machine to trigger trace collection. After doing the repro, run 'wpr -stopboot'."
+            Exit 0
+        } else {
+            Write-Host "[$(Get-Timestamp)] Live Tracing Started. Go ahead and reproduce your problem. Press [Enter] when done."
+            [void][System.Console]::ReadLine()
+        }
     } else {
         Write-Error "[$(Get-Timestamp)] Live Tracing failed to start."
     }
@@ -854,7 +945,11 @@ function Trace-WprEvents($LogsDestinationPath) {
     try {
         if($appModelMinTraceStarted) {
             Write-Host "[$(Get-Timestamp)] Ending WPR instance name: AppModelMin"
-            wpr -stop ($LogsDestinationPath + '\AppModelLogs.etl') -instancename "AppModelMin"
+            if ($StartBoot -eq $true) {
+                wpr -stopboot ($LogsDestinationPath + '\AppModelLogs.etl') -instancename "AppModelMin"
+            } else {
+                wpr -stop ($LogsDestinationPath + '\AppModelLogs.etl') -instancename "AppModelMin"
+            }
         }
     } catch {
         Write-Error "[$(Get-Timestamp)] Failed to end WPR instance name: AppModelMin."
@@ -862,7 +957,11 @@ function Trace-WprEvents($LogsDestinationPath) {
     try {
         if($adexProvidersTraceStarted) {
             Write-Host "[$(Get-Timestamp)] Ending WPR instance name: AdexProviders"
-            wpr -stop ($LogsDestinationPath + '\AdexLogs.etl') -instancename "AdexProviders"
+            if ($StartBoot -eq $true) {
+                wpr -stopboot ($LogsDestinationPath + '\AdexLogs.etl') -instancename "AdexProviders"
+            } else {
+                wpr -stop ($LogsDestinationPath + '\AdexLogs.etl') -instancename "AdexProviders"
+            }
         }
     } catch {
         Write-Error "[$(Get-Timestamp)] Failed to end WPR instance name: AdexProviders"
@@ -870,7 +969,11 @@ function Trace-WprEvents($LogsDestinationPath) {
     try {
         if($startBvtTraceStarted) {
             Write-Host "[$(Get-Timestamp)] Ending WPR instance name: StartBvt"
-            wpr -stop ($LogsDestinationPath + '\StartBvt.etl') -instancename "StartBvt"
+            if ($StartBoot -eq $true) {
+                wpr -stopboot ($LogsDestinationPath + '\StartBvt.etl') -instancename "StartBvt"
+            } else {
+                wpr -stop ($LogsDestinationPath + '\StartBvt.etl') -instancename "StartBvt"
+            }
         }
     } catch {
         Write-Error "[$(Get-Timestamp)] Failed to end WPR instance name: StartBvt"
@@ -1085,10 +1188,6 @@ else
   exit
 }
 
-$LogsFolderName = 'AppxLogs' + (get-date -uformat %s)
-$LogsDestinationPath = $env:TEMP + '\' + $LogsFolderName
-$CabPath = $LogsDestinationPath + '.zip'
-
 New-Item -ItemType Directory -Force -Path $LogsDestinationPath > $null
 
 $tracingExplicitlySet = $false
@@ -1127,9 +1226,9 @@ if($tracingEnabled) {
     Checkpoint-PersistedData($LogsDestinationSubPath)
   }
 
-  Trace-WprEvents($LogsDestinationPath)
+  Trace-WprEvents($LogsDestinationPath, $StartBoot)
 
-  Write-Host 'Collecting data checkpoint after tracing endeds: '
+  Write-Host 'Collecting data checkpoint after tracing ends: '
   $LogsDestinationSubPath = $LogsDestinationPath + '\AfterTracing'
   New-Item -ItemType Directory -Force -Path $LogsDestinationSubPath > $null
   Checkpoint-PersistedData($LogsDestinationSubPath)
