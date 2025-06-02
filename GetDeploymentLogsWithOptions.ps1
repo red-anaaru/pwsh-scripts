@@ -3,47 +3,90 @@
 # various logs and system information to diagnose App deployment problems. 
 #
 
+<#
+.SYNOPSIS
+    Collects various logs and system information to diagnose Windows App deployment problems.
+
+.DESCRIPTION
+    GetDeploymentLogsWithOptions.ps1 is a comprehensive PowerShell script that gathers system, event, registry, and tracing logs relevant to Windows AppX deployment and troubleshooting. It supports both immediate and tracing-enabled log collection, including boot tracing and Procmon integration. The script can be run as administrator and will relaunch itself elevated if needed.
+
+.PARAMETER Force
+    If specified, suppresses user prompts and pauses.
+
+.PARAMETER EnableTracing
+    Enables ETW tracing during log collection.
+
+.PARAMETER SkipBeforeCheckpoint
+    Skips the collection of static data before tracing begins.
+
+.PARAMETER StartBoot
+    Enables boot tracing. Must be used with -EnableTracing.
+
+.PARAMETER StopBoot
+    Stops boot tracing and collects logs.
+
+.PARAMETER CancelBoot
+    Cancels any pending ETW boot tracing.
+
+.PARAMETER ProcmonPath
+    Optional. Path to Procmon.exe for collecting Procmon traces.
+
+.PARAMETER TargetPackageFamilyName
+    Optional. The package family name of the app to collect additional ACL and registry data for.
+
+.EXAMPLE
+    .\GetDeploymentLogsWithOptions.ps1
+    Runs the script interactively, prompting the user to choose between immediate log collection or tracing.
+
+.EXAMPLE
+    .\GetDeploymentLogsWithOptions.ps1 -EnableTracing
+    Collects logs with ETW tracing enabled.
+
+.EXAMPLE
+    .\GetDeploymentLogsWithOptions.ps1 -EnableTracing -StartBoot
+    Prepares the system for boot tracing. After reboot and repro, run with -StopBoot to collect logs.
+
+.EXAMPLE
+    .\GetDeploymentLogsWithOptions.ps1 -StopBoot
+    Stops boot tracing and collects logs after a repro.
+
+.EXAMPLE
+    .\GetDeploymentLogsWithOptions.ps1 -CancelBoot
+    Cancels any pending ETW boot tracing.
+
+.EXAMPLE
+    .\GetDeploymentLogsWithOptions.ps1 -EnableTracing -ProcmonPath "C:\Tools\Procmon.exe"
+    Collects logs with ETW tracing and Procmon trace.
+
+.EXAMPLE
+    .\GetDeploymentLogsWithOptions.ps1 -TargetPackageFamilyName "ContosoApp_12345678"
+    Collects logs and additional ACL/registry data for the specified app package family.
+
+.NOTES
+    Author: Microsoft Corporation
+    Version: 1.0.8
+    This script must be run as administrator. It will relaunch itself elevated if needed.
+    The output is a zip file containing all collected logs, suitable for sharing with support teams.
+#>
+#
+# GetDeploymentLogsWithOptions.ps1 is a PowerShell script designed to collect
+# various logs and system information to diagnose App deployment problems. 
+#
 param(
     [switch]$Force = $false,
     [switch]$EnableTracing = $false,
     [switch]$SkipBeforeCheckpoint = $false,
-    [Parameter(ParameterSetName="StartBoot")]
-    [switch]$StartBoot,
-    [Parameter(ParameterSetName="StopBoot")]
-    [switch]$StopBoot,
-    [Parameter(ParameterSetName="CancelBoot")]
-    [switch]$CancelBoot,
+    [Parameter(Mandatory=$false)]
+    [switch]$StartBoot = $false,
+    [Parameter(Mandatory=$false)]
+    [switch]$StopBoot = $false,
+    [Parameter(Mandatory=$false)]
+    [switch]$CancelBoot = $false,
     [Parameter(Mandatory=$false)]
     [System.String]$ProcmonPath = "",
     [Parameter(Mandatory=$false)]
     [System.String]$TargetPackageFamilyName = ""
 )
-
-$LogsFolderName = 'AppxLogs' + (get-date -uformat %s)
-$LogsDestinationPath = $env:TEMP + '\' + $LogsFolderName
-$CabPath = $LogsDestinationPath + '.zip'
-
-# Check if LogsDestinationPath exists, create if not
-if (-not (Test-Path -Path $LogsDestinationPath)) {
-    New-Item -ItemType Directory -Force -Path $LogsDestinationPath > $null
-}
-
-# Validation: StartBoot requires EnableTracing
-if ($PSBoundParameters.ContainsKey('StartBoot') -and $StartBoot) {
-    if (-not ($PSBoundParameters.ContainsKey('EnableTracing') -and $EnableTracing)) {
-        Write-Error "The -StartBoot switch can only be used together with -EnableTracing."
-        exit 1
-    }
-}
-
-if ($PSBoundParameters.ContainsKey('StopBoot') -and $StopBoot) {
-    Stop-WprBootTracing($LogsDestinationPath)
-}
-
-if ($PSCmdlet.ParameterSetName -eq "CancelBoot") {
-    Write-Host "Cancelling ETW boot tracing"
-    wpr.exe -cancelboot
-}
 
 # Function to get the current timestamp
 function Get-Timestamp {
@@ -56,8 +99,11 @@ function Read-KeyPress {
     return $key.KeyChar.ToString().ToUpperInvariant()
 }
 
-function PrintMessageAndExit($ErrorMessage, $ReturnCode)
-{
+function PrintMessageAndExit {
+    param(
+        [string]$ErrorMessage,
+        [int]$ReturnCode
+    )
     Write-Host $ErrorMessage
     if (!$Force)
     {
@@ -767,7 +813,10 @@ $adexProvidersXml = @"
 return $adexProvidersXml
 }
 
-function Invoke-UnicodeTool($ToolString) {
+function Invoke-UnicodeTool {
+    param (
+        [string]$ToolString
+    )
     # Switch output encoding to unicode and then back to the default for tools
     # that output to the command line as unicode.
     $oldEncoding = [console]::OutputEncoding
@@ -806,13 +855,18 @@ function Checkpoint-UTMData {
     }
 }
 
-function Stop-WprBootTracing($LogsDestinationPath) {
+function Stop-WprBootTracing {
+    param (
+        [string]$LogsDestinationPath
+    )
+
     $appModelMinTraceStopped = $false
     $adexProvidersTraceStopped = $false
     $startBvtTraceStopped = $false
     try {
-        Write-Host "[$(Get-Timestamp)] Ending WPR instance name: AppModelMin"
-        wpr -stopboot ($LogsDestinationPath + '\AppModelLogs.etl') -instancename "AppModelMin"
+        $etlPath = (Join-Path -Path $LogsDestinationPath -ChildPath 'AppModelLogs.etl')
+        Write-Host "[$(Get-Timestamp)] Ending WPR instance name: AppModelMin - $etlPath"
+        wpr -boottrace -stopboot $etlPath -instancename "AppModelMin"
         $appModelMinTraceStopped = $true
     } catch {
         if(!$appModelMinTraceStopped) {
@@ -821,8 +875,9 @@ function Stop-WprBootTracing($LogsDestinationPath) {
     }
     
     try {
-        Write-Host "[$(Get-Timestamp)] Ending WPR instance name: AdexProviders"
-        wpr -stopboot ($LogsDestinationPath + '\AdexProvidersLogs.etl') -instancename "AdexProviders"
+        $etlPath = (Join-Path -Path $LogsDestinationPath -ChildPath 'AdexProvidersLogs.etl')
+        Write-Host "[$(Get-Timestamp)] Ending WPR instance name: AdexProviders - $etlPath"
+        wpr -boottrace -stopboot $etlPath -instancename "AdexProviders"
         $adexProvidersTraceStopped = $true
     } catch {
         if(!$adexProvidersTraceStopped) {
@@ -831,8 +886,9 @@ function Stop-WprBootTracing($LogsDestinationPath) {
     }
     
     try {
-        Write-Host "[$(Get-Timestamp)] Ending WPR instance name: StartBvt"
-        wpr -stopboot ($LogsDestinationPath + '\StartBvtLogs.etl') -instancename "StartBvt"
+        $etlPath = (Join-Path -Path $LogsDestinationPath -ChildPath 'StartBvtLogs.etl')
+        Write-Host "[$(Get-Timestamp)] Ending WPR instance name: StartBvt - $etlPath"
+        wpr -boottrace -stopboot $etlPath -instancename "StartBvt"
         $startBvtTraceStopped = $true
     } catch {
         if(!$startBvtTraceStopped) {
@@ -848,7 +904,11 @@ function Stop-WprBootTracing($LogsDestinationPath) {
     }
 }
 
-function Trace-WprEvents($LogsDestinationPath, [bool] $StartBoot = $false) {
+function Trace-WprEvents {
+    param (
+        [string]$LogsDestinationPath
+    )
+
     #Start tracelogging
     $appModelMinTraceStarted = $false
     $adexProvidersTraceStarted = $false
@@ -856,12 +916,12 @@ function Trace-WprEvents($LogsDestinationPath, [bool] $StartBoot = $false) {
     $procmonStarted = $false
 
     try {
-        $appModelMinFile = ($LogsDestinationPath + '\AppModelMin.wprp')
+        $appModelMinFile = (Join-Path -Path $LogsDestinationPath -ChildPath 'AppModelMin.wprp')
         Get-AppModelMinWprp | Out-File -FilePath $appModelMinFile -Encoding UTF8
 
-        Write-Host "[$(Get-Timestamp)] Starting WPR instance name: AppModelMin"
+        Write-Host "[$(Get-Timestamp)] Starting WPR instance name: AppModelMin (wprp: $appModelMinFile)"
         if ($StartBoot -eq $true) {
-            wpr -addboot $appModelMinFile -instancename "AppModelMin"
+            wpr -boottrace -addboot $appModelMinFile -instancename "AppModelMin"
         } else {
             wpr -start $appModelMinFile -instancename "AppModelMin"
         }
@@ -873,12 +933,12 @@ function Trace-WprEvents($LogsDestinationPath, [bool] $StartBoot = $false) {
     }
     
     try {
-        $adexProvidersFile = ($LogsDestinationPath + '\adexproviders.wprp')
+        $adexProvidersFile = (Join-Path -Path $LogsDestinationPath -ChildPath 'adexproviders.wprp')
         Get-AdexProvidersWprp | Out-File -FilePath $adexProvidersFile -Encoding UTF8
 
-        Write-Host "[$(Get-Timestamp)] Starting WPR instance name: AdexProviders"
+        Write-Host "[$(Get-Timestamp)] Starting WPR instance name: AdexProviders (wprp: $adexProvidersFile)"
         if ($StartBoot -eq $true) {
-            wpr -addboot $adexProvidersFile -filemode -instancename "AdexProviders"
+            wpr -boottrace -addboot $adexProvidersFile -filemode -instancename "AdexProviders"
         } else {
             wpr -start $adexProvidersFile -filemode -instancename "AdexProviders"
         }
@@ -890,12 +950,12 @@ function Trace-WprEvents($LogsDestinationPath, [bool] $StartBoot = $false) {
     }
     
     try {
-        $startBvtFile = ($LogsDestinationPath + '\StartBvt.wprp')
+        $startBvtFile = (Join-Path -Path $LogsDestinationPath -ChildPath 'StartBvt.wprp')
         Get-StartBvtWprp | Out-File -FilePath $startBvtFile -Encoding UTF8
 
-        Write-Host "[$(Get-Timestamp)] Starting WPR instance name: StartBvt"
+        Write-Host "[$(Get-Timestamp)] Starting WPR instance name: StartBvt (wprp: $startBvtFile)"
         if ($StartBoot -eq $true) {
-            wpr -addboot $startBvtFile -filemode -instancename "StartBvt"
+            wpr -boottrace -addboot $startBvtFile -filemode -instancename "StartBvt"
         } else {
             wpr -start $startBvtFile -filemode -instancename "StartBvt"
         }
@@ -924,7 +984,7 @@ function Trace-WprEvents($LogsDestinationPath, [bool] $StartBoot = $false) {
     $tracingStarted = $appModelMinTraceStarted -or $adexProvidersTraceStarted -or $startBvtTraceStarted -or $procmonStarted
     if($tracingStarted) {
         if ($StartBoot -eq $true) {
-            Write-Host "[$(Get-Timestamp)] Boot tracing enabled. Restart the machine to trigger trace collection. After doing the repro, run 'wpr -stopboot'."
+            Write-Host "[$(Get-Timestamp)] Boot tracing enabled. Restart the machine to trigger trace collection. After doing the repro, run '.\GetDeploymentLogsWithOptions.ps1 -StopBoot'."
             Exit 0
         } else {
             Write-Host "[$(Get-Timestamp)] Live Tracing Started. Go ahead and reproduce your problem. Press [Enter] when done."
@@ -945,8 +1005,8 @@ function Trace-WprEvents($LogsDestinationPath, [bool] $StartBoot = $false) {
     try {
         if($appModelMinTraceStarted) {
             Write-Host "[$(Get-Timestamp)] Ending WPR instance name: AppModelMin"
-            if ($StartBoot -eq $true) {
-                wpr -stopboot ($LogsDestinationPath + '\AppModelLogs.etl') -instancename "AppModelMin"
+            if ($StopBoot -eq $true) {
+                wpr -boottrace -stopboot ($LogsDestinationPath + '\AppModelLogs.etl') -instancename "AppModelMin"
             } else {
                 wpr -stop ($LogsDestinationPath + '\AppModelLogs.etl') -instancename "AppModelMin"
             }
@@ -957,8 +1017,8 @@ function Trace-WprEvents($LogsDestinationPath, [bool] $StartBoot = $false) {
     try {
         if($adexProvidersTraceStarted) {
             Write-Host "[$(Get-Timestamp)] Ending WPR instance name: AdexProviders"
-            if ($StartBoot -eq $true) {
-                wpr -stopboot ($LogsDestinationPath + '\AdexLogs.etl') -instancename "AdexProviders"
+            if ($StopBoot -eq $true) {
+                wpr -boottrace -stopboot ($LogsDestinationPath + '\AdexLogs.etl') -instancename "AdexProviders"
             } else {
                 wpr -stop ($LogsDestinationPath + '\AdexLogs.etl') -instancename "AdexProviders"
             }
@@ -969,8 +1029,8 @@ function Trace-WprEvents($LogsDestinationPath, [bool] $StartBoot = $false) {
     try {
         if($startBvtTraceStarted) {
             Write-Host "[$(Get-Timestamp)] Ending WPR instance name: StartBvt"
-            if ($StartBoot -eq $true) {
-                wpr -stopboot ($LogsDestinationPath + '\StartBvt.etl') -instancename "StartBvt"
+            if ($StopBoot -eq $true) {
+                wpr -boottrace -stopboot ($LogsDestinationPath + '\StartBvt.etl') -instancename "StartBvt"
             } else {
                 wpr -stop ($LogsDestinationPath + '\StartBvt.etl') -instancename "StartBvt"
             }
@@ -980,23 +1040,28 @@ function Trace-WprEvents($LogsDestinationPath, [bool] $StartBoot = $false) {
     }
 }
 
-function Publish-StaticData($LogsDestinationPath)
-{
-Write-Host "[$(Get-Timestamp)] Collecting static data..."
+function Publish-StaticData {
+    param (
+        [string]$LogsDestinationPath
+    )
 
-$ComputerInfo = $(Get-ComputerInfo)
-$ComputerInfo.OsHotFixes  | Out-File -Append ($LogsDestinationPath + '\OSVersion.txt')
-$ComputerInfo.WindowsBuildLabEx | Out-File -Append ($LogsDestinationPath + '\OSVersion.txt')
+    Write-Host "[$(Get-Timestamp)] Collecting static data..."
 
-fltmc filters > ($LogsDestinationPath + '\FltmcFilters.txt')
-$doSvcFile = $LogsDestinationPath + '\dosvc.log'
-Get-DeliveryOptimizationLog | Set-Content $doSvcFile
+    $ComputerInfo = $(Get-ComputerInfo)
+    $ComputerInfo.OsHotFixes  | Out-File -Append ($LogsDestinationPath + '\OSVersion.txt')
+    $ComputerInfo.WindowsBuildLabEx | Out-File -Append ($LogsDestinationPath + '\OSVersion.txt')
 
-"1.0.8"  > ($LogsDestinationPath + '\ScriptVersion.txt')
+    fltmc filters > ($LogsDestinationPath + '\FltmcFilters.txt')
+    $doSvcFile = $LogsDestinationPath + '\dosvc.log'
+    Get-DeliveryOptimizationLog | Set-Content $doSvcFile
+
+    "1.0.8"  > ($LogsDestinationPath + '\ScriptVersion.txt')
 }
 
-function Checkpoint-PersistedData($LogsDestinationPath)
-{
+function Checkpoint-PersistedData {
+    param (
+        [string]$LogsDestinationPath
+    )
 Write-Host 'Creating Destination Folder and Gathering Logs ' $LogsDestinationPath
 Write-Host "[$(Get-Timestamp)] Collecting persisted log data..."
   
@@ -1078,7 +1143,6 @@ $RegistrySourceDestinationPairs =
             (("HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server"), ($RegExportsDestinationPath + '\CurrentControlSetTerminalServer.reg'))
         )
 
-
 Write-Progress -Activity 'Collecting event logs' -Id 10041
 
 $EventLogsFolderPath = ($LogsDestinationPath + '\EventLogs\')
@@ -1114,6 +1178,73 @@ Get-ChildItem -Path $WindowsAppPath -Force -ErrorAction SilentlyContinue > ($Log
 Get-ChildItem -Path $AppRepositoryPath -Force -ErrorAction SilentlyContinue > ($LogsDestinationPath + '\AppRepositoryFileList.txt')
 
 Write-Progress -Activity 'Collecting ACLs' -Id 10041
+}
+
+function Collect-AfterTracingData {
+    param (
+        [string]$LogsDestinationPath,
+        [bool]$TracingEnabled
+    )
+    Write-Host 'Collecting data checkpoint after tracing ends: '
+    if ($TracingEnabled) {
+        $LogsDestinationSubPath = $LogsDestinationPath + '\AfterTracing'
+    } else {
+        $LogsDestinationSubPath = $LogsDestinationPath
+    }
+    
+    New-Item -ItemType Directory -Force -Path $LogsDestinationSubPath > $null
+    Checkpoint-PersistedData($LogsDestinationSubPath)
+
+    Publish-StaticData($LogsDestinationPath)
+
+    Write-Progress -Activity 'Creating Zip Archive' -Id 10042
+    Add-Type -Assembly "System.IO.Compression.FileSystem";
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($LogsDestinationPath, $CabPath);
+
+    Write-Progress -Activity 'Done' -Completed -Id 10042
+    Write-Warning "Note: Below Zip file contains system, app and user information useful for diagnosing Application Installation Issues."
+    Write-Host 'Please upload zip and share a link : '
+    Write-Host $CabPath
+}
+
+# ==================================================================================================
+# Main
+# ==================================================================================================
+
+if ($PSBoundParameters.ContainsKey('CancelBoot') -and $CancelBoot) {
+    Write-Host "Cancelling ETW boot tracing"
+    wpr.exe -cancelboot
+    Exit 0
+}
+
+if (($PSBoundParameters.ContainsKey('StartBoot') -and $StartBoot) -or ($PSBoundParameters.ContainsKey('StopBoot') -and $StopBoot)) {
+    $dateString = (Get-Date).ToString('MM-dd-yyyy')
+    $LogsFolderName = 'AppxLogs-' + $dateString
+} else {
+    $LogsFolderName = 'AppxLogs-' + (get-date -uformat %s)
+}
+
+$LogsDestinationPath = Join-Path -Path $env:TEMP -ChildPath $LogsFolderName
+$CabPath = $LogsDestinationPath + '.zip'
+
+# Check if LogsDestinationPath exists, create if not
+if (-not (Test-Path -Path $LogsDestinationPath)) {
+    New-Item -ItemType Directory -Force -Path $LogsDestinationPath > $null
+}
+
+# Validation: StartBoot requires EnableTracing
+if ($PSBoundParameters.ContainsKey('StartBoot') -and $StartBoot) {
+    if (-not ($PSBoundParameters.ContainsKey('EnableTracing') -and $EnableTracing)) {
+        Write-Error "The -StartBoot switch can only be used together with -EnableTracing."
+        exit 1
+    }
+}
+
+if ($PSBoundParameters.ContainsKey('StopBoot') -and $StopBoot) {
+    Stop-WprBootTracing -LogsDestinationPath $LogsDestinationPath
+    Collect-AfterTracingData -LogsDestinationPath $LogsDestinationPath -TracingEnabled $true
+    Exit 0
+}
 
 Get-ChildItem -Path $WindowsAppPath | Get-Acl | Format-List > ($LogsDestinationPath + '\WindowsAppsAcls.txt')
 
@@ -1152,7 +1283,6 @@ $asciiString = [System.Text.Encoding]::ASCII.GetString($binaryData)
 $asciiString  > ($LogsDestinationPath + '\TaskbandFavorites.txt')
 
 Write-Progress -Activity 'Done' -Completed -Id 10041
-}
 
 # Get the ID and security principal of the current user account
 $myWindowsID=[System.Security.Principal.WindowsIdentity]::GetCurrent()
@@ -1188,14 +1318,12 @@ else
   exit
 }
 
-New-Item -ItemType Directory -Force -Path $LogsDestinationPath > $null
-
 $tracingExplicitlySet = $false
 $tracingEnabled = $false
 if ($PSBoundParameters.ContainsKey('EnableTracing')) {
     $tracingExplicitlySet = $true
     if ($EnableTracing) {
-      $tracingEnabled = $true
+        $tracingEnabled = $true
     }
 }
 
@@ -1203,7 +1331,7 @@ if ($PSBoundParameters.ContainsKey('EnableTracing')) {
 $skipBeforeCheckpointSet = $false
 if ($PSBoundParameters.ContainsKey('SkipBeforeCheckpoint')) {
     if ($SkipBeforeCheckpoint) {
-      $skipBeforeCheckpointSet = $true
+        $skipBeforeCheckpointSet = $true
     }
 }
 
@@ -1213,37 +1341,23 @@ if (!($tracingExplicitlySet)) {
   # Read the user's input
   $userInput = Read-KeyPress
   if ($userInput -eq 'Y') {
-    $tracingEnabled = $true
+      $tracingEnabled = $true
   }
 }
 
-if($tracingEnabled) {
-  if(!$skipBeforeCheckpointSet){
-    # Collect static data before collecting tracing to allow before\after data comparison.
-    Write-Host 'Collecting data checkpoint before tracing begins: '
-    $LogsDestinationSubPath = $LogsDestinationPath + '\BeforeTracing'
-    New-Item -ItemType Directory -Force -Path $LogsDestinationSubPath > $null
-    Checkpoint-PersistedData($LogsDestinationSubPath)
-  }
+if ($tracingEnabled) {
+    if (!$skipBeforeCheckpointSet) {
+        # Collect static data before collecting tracing to allow before\after data comparison.
+        Write-Host 'Collecting data checkpoint before tracing begins: '
+        $LogsDestinationSubPath = $LogsDestinationPath + '\BeforeTracing'
+        New-Item -ItemType Directory -Force -Path $LogsDestinationSubPath > $null
+        Checkpoint-PersistedData -$LogsDestinationPath $LogsDestinationSubPath
+    }
 
-  Trace-WprEvents($LogsDestinationPath, $StartBoot)
-
-  Write-Host 'Collecting data checkpoint after tracing ends: '
-  $LogsDestinationSubPath = $LogsDestinationPath + '\AfterTracing'
-  New-Item -ItemType Directory -Force -Path $LogsDestinationSubPath > $null
-  Checkpoint-PersistedData($LogsDestinationSubPath)
-} else {
-  Checkpoint-PersistedData($LogsDestinationPath)
+  Trace-WprEvents -LogsDestinationPath $LogsDestinationPath
 }
 
-Publish-StaticData($LogsDestinationPath)
+# Collect additional data after tracing
+Collect-AfterTracingData -LogsDestinationPath $LogsDestinationPath -TracingEnabled $tracingEnabled
 
-Write-Progress -Activity 'Creating Zip Archive' -Id 10042
-Add-Type -Assembly "System.IO.Compression.FileSystem";
-[System.IO.Compression.ZipFile]::CreateFromDirectory($LogsDestinationPath, $CabPath);
-
-Write-Progress -Activity 'Done' -Completed -Id 10042
-Write-Warning "Note: Below Zip file contains system, app and user information useful for diagnosing Application Installation Issues."
-Write-Host 'Please upload zip and share a link : '
-Write-Host $CabPath
 Pause
