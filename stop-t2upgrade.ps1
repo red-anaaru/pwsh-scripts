@@ -1,4 +1,7 @@
 param(
+  [Parameter()]
+  [ValidateSet("work","life")]
+  [string] $flavor = "work",
   [switch]$Undo,
   [switch]$useStableWv2,
   [switch]$usePreRelWv2 = $false
@@ -10,9 +13,13 @@ if ($useStableWv2 -and $usePreRelWv2) {
   exit 1
 }
 
-if ($Undo) {
-  $configJsonPath = "{0}\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams\configuration.json" -f $env:LOCALAPPDATA
+$appName = If (($platform -eq "osx") -or ($flavor -eq "life")) {"MicrosoftTeams"} Else {"MSTeams"}
+$packageFamilyName = "{0}_8wekyb3d8bbwe" -f $appName
 
+$configJsonDir = "{0}\Packages\{1}\LocalCache\Microsoft\MSTeams" -f $env:LOCALAPPDATA, $packageFamilyName
+
+if ($Undo) {
+  $configJsonPath =  Join-Path -Path $configJsonDir -ChildPath "configuration.json"
   $configJson = Get-Content -Path $configJsonPath -Raw
   if (![string]::IsNullOrEmpty($configJson)) {
     $configObject = $configJson | ConvertFrom-Json
@@ -31,8 +38,7 @@ if ($Undo) {
   }
 }
 else {
-  $configJsonPath = "{0}\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams" -f $env:LOCALAPPDATA
-  New-Item -Path $configJsonPath -ItemType Directory -Force
+  New-Item -Path $configJsonDir -ItemType Directory -Force
   $stopUpdateJsonStr = "{'x64/buildLink': '', 'x64/latestVersion': '', 'core/devMenuEnabled': true, 'logging/minimumSeverity': 'DebugPII'}"
   $configObject = $stopUpdateJsonStr | ConvertFrom-Json
 
@@ -47,5 +53,5 @@ else {
   }
 
   $configJson = $configObject | ConvertTo-Json
-  $configJson | Out-File -FilePath $configJsonPath\configuration.json
+  $configJson | Out-File -FilePath $configJsonDir\configuration.json
 }

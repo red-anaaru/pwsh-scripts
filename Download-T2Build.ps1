@@ -49,6 +49,9 @@ Param(
   [Parameter(mandatory=$true)]
   [string] $build,
   [Parameter()]
+  [ValidateSet("work","life")]
+  [string] $flavor = "work",
+  [Parameter()]
   [ValidateSet("windows","osx")]
   [string] $platform = "windows",
   [Parameter()]
@@ -65,7 +68,7 @@ if ($build -eq $nul) {
   Exit
 }
 
-$appName = If ($platform -eq "windows") {"MSTeams"} Else {"MicrosoftTeams"}
+$appName = If (($platform -eq "osx") -or ($flavor -eq "life")) {"MicrosoftTeams"} Else {"MSTeams"}
 $extn = If ($platform -eq "windows") {"msix"} Else {"pkg"}
 $appPkgName = "{0}-{1}.{2}" -f $appName, $arch, $extn
 $statics = If ($ring -ne "r4") {"staticsint"} Else {"statics"}
@@ -91,7 +94,7 @@ Write-Output "Downloaded $pkgFile"
 
 if ($Install) {
   Write-Information "Checking existing Teams installation..."
-  $teamsApp = Get-AppxPackage -Name "MSTeams"
+  $teamsApp = Get-AppxPackage -Name $appName
   if ($teamsApp) {
     Write-Information "Uninstalling $teamsApp.PackageFullName ..."
     Remove-AppxPackage -Package $teamsApp.PackageFullName
